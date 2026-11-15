@@ -8,7 +8,8 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:postman": "postman collection run \"postman/collections/user-service.postman_collection.json\" -e \"postman/environments/user-service.local.postman_environment.json\" --no-report-events"
   },
   "dependencies": {
     "lucide-vue-next": "^0.468.0",
@@ -19,6 +20,7 @@
     "@playwright/test": "^1.56.0",
     "@types/node": "^24.0.0",
     "@vitejs/plugin-vue": "^6.0.0",
+    "postman-cli": "^1.90.0",
     "typescript": "^5.9.0",
     "vite": "^7.0.0",
     "vitest": "^5.1.0",

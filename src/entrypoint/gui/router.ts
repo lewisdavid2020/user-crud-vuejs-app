@@ -15,7 +15,7 @@ export function createAppRouter(app: UseCases) {
     { path: '/usuarios/eliminar', component: UsersView, meta: { mode: 'delete' } },
     { path: '/usuarios/:id/editar', component: UserFormView },
     { path: '/:pathMatch(.*)*', redirect: '/' },
-  ] });
+  ], scrollBehavior: () => ({ top: 0 }) });
   router.beforeEach(to => {
     if (!to.meta.public && !app.currentSession()) return { path: '/login', query: { redirect: to.fullPath } };
   });

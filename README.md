@@ -89,12 +89,14 @@ npm test
 npm run build
 ```
 
-Para pruebas completas en navegador necesitas [Postman CLI](https://learning.postman.com/docs/postman-cli/postman-cli-installation/) 1.70 o posterior y Chromium:
+Para pruebas completas en navegador instala Chromium. La [Postman CLI](https://learning.postman.com/docs/postman-cli/postman-cli-installation/) 1.90 ya está incluida en `devDependencies`, así que no hace falta instalarla globalmente:
 
 ```bash
 npx playwright install chromium
 npm run test:e2e
 ```
+
+Para probar el backend real con la colección de Postman, consulta [postman/README.md](./postman/README.md).
 
 Playwright inicia automáticamente una simulación Postman en el puerto 4010 y Vite en el 5173; ambos puertos deben estar libres. El registro HTTP de la simulación se guarda localmente en `postman/simulation.log` (ignorado por Git). Los mocks son locales y se derivan del contrato del backend; no se hacen cambios en usuarios reales. Las credenciales `admin@example.com / password123` funcionan exclusivamente en la simulación. Esta no verifica firmas criptográficas de JWT y no reemplaza al backend.
 

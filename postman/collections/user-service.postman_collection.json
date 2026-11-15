@@ -1,0 +1,1133 @@
+{
+  "info": {
+    "_postman_id": "7b1f0d2e-3c4a-4f6b-9a8d-5e2c1b0a9f31",
+    "name": "User Service · API REST",
+    "description": "# User Service · API REST\n\nPeticiones para probar la API de gestión de usuarios del proyecto **user-service**.\n\n## Requisitos\n\n- Backend disponible en `http://localhost:8080` (por ejemplo, `docker compose up -d` en `user-service`).\n- RabbitMQ disponible en `localhost:5672` con el exchange `domain.events` y una cola enlazada. Sin RabbitMQ las escrituras responden 503. Ejecuta `postman/setup-rabbitmq.ps1`; los detalles están en `postman/README.md`.\n- Importar también el environment **User Service · Local**.\n\n## Credenciales\n\nEl `schema.sql` crea el administrador inicial:\n\n- Email: `admin@example.com`\n- Contraseña: configúrala en `adminPassword` del environment\n\nPuedes cambiarlas en el environment sin editar la colección.\n\n## Orden recomendado\n\nEjecuta las carpetas en orden: **01 · Salud**, **02 · Autenticación**, **03 · Usuarios** y **04 · Errores**.\n\nEl login de administrador guarda `accessToken` automáticamente. El usuario de prueba se genera con un UUID y un correo únicos en cada ejecución, se activa, se usa para comprobar permisos y se elimina al final. La última petición de limpieza tolera `204` o `404`, así que puedes repetir la carpeta sin dejar registros.\n\n## Variables principales\n\n| Variable | Uso |\n| --- | --- |\n| `baseUrl` | Origen del backend, sin `/api` |\n| `adminEmail` / `adminPassword` | Credenciales del administrador |\n| `accessToken` | JWT del administrador (se guarda al iniciar sesión) |\n| `memberToken` | JWT del usuario de prueba ya activado |\n| `testUserId` / `testEmail` | Datos del usuario creado durante el flujo |\n\nSi ejecutas una petición suelta del flujo CRUD, primero ejecuta **1. Crear usuario** o define `testUserId` y `testEmail` manualmente.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "adminEmail",
+      "value": "admin@example.com",
+      "type": "string"
+    },
+    {
+      "key": "adminPassword",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "memberToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testUserId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testName",
+      "value": "Usuario Postman",
+      "type": "string"
+    },
+    {
+      "key": "testEmail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testPassword",
+      "value": "Password123!",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 · Salud",
+      "description": "Endpoints públicos de estado y documentación.",
+      "item": [
+        {
+          "name": "Estado del servicio",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Expone nombre y versión', () => {",
+                  "  pm.expect(body.name).to.be.a('string').and.not.empty;",
+                  "  pm.expect(body.version).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Comprueba que el backend esté arriba. No requiere token."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "02 · Autenticación",
+      "description": "Login con JWT y comprobaciones de acceso sin token.",
+      "item": [
+        {
+          "name": "Login ADMIN (guarda el token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Devuelve un token Bearer', () => {",
+                  "  pm.expect(body.accessToken).to.be.a('string');",
+                  "  pm.expect(body.accessToken.length).to.be.greaterThan(20);",
+                  "  pm.expect(body.tokenType).to.eql('Bearer');",
+                  "  pm.expect(body.expiresIn).to.be.above(0);",
+                  "});",
+                  "",
+                  "const payload = body.accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "const padded = payload + '='.repeat((4 - payload.length % 4) % 4);",
+                  "const claims = JSON.parse(atob(padded));",
+                  "pm.test('El token pertenece a un ADMIN', () => {",
+                  "  pm.expect(claims.role).to.eql('ADMIN');",
+                  "  pm.expect(claims.sub).to.be.a('string').and.not.empty;",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('accessToken', body.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Inicia sesión con el administrador y guarda `accessToken` en las variables de la colección."
+          },
+          "response": []
+        },
+        {
+          "name": "Login con credenciales inválidas (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Devuelve el error del API', () => {",
+                  "  pm.expect(body.status).to.eql(401);",
+                  "  pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"ContraseñaIncorrecta1!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Credenciales incorrectas: el backend responde 401 con el cuerpo `ApiErrorResponse`."
+          },
+          "response": []
+        },
+        {
+          "name": "Login con datos inválidos (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('El mensaje menciona la validación', () => {",
+                  "  pm.expect(body.status).to.eql(400);",
+                  "  pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"correo-invalido\",\n  \"password\": \"123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Email mal formado y contraseña corta: la validación de Bean Validation responde 400."
+          },
+          "response": []
+        },
+        {
+          "name": "Listar usuarios sin token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "El listado exige JWT con rol ADMIN o REVIEWER. Sin cabecera `Authorization` responde 401."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "03 · Usuarios (flujo CRUD)",
+      "description": "Flujo ordenado: crear, idempotencia, conflicto, listar, consultar, activar, permisos por rol, eliminar y limpiar.",
+      "item": [
+        {
+          "name": "1. Crear usuario MEMBER (201)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('testUserId', pm.variables.replaceIn('{{$guid}}'));",
+                  "pm.variables.set('testName', 'Usuario Postman');",
+                  "pm.variables.set('testEmail', `postman.${Date.now()}@example.com`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Devuelve el usuario creado', () => {",
+                  "  ['id', 'name', 'email', 'role', 'status'].forEach((key) => {",
+                  "    pm.expect(body).to.have.property(key);",
+                  "  });",
+                  "  pm.expect(body.role).to.eql('MEMBER');",
+                  "  pm.expect(body.status).to.eql('PENDING');",
+                  "});",
+                  "pm.test('No expone la contraseña', () => {",
+                  "  pm.expect(body).to.not.have.property('password');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('testUserId', body.id);",
+                  "pm.collectionVariables.set('testName', body.name);",
+                  "pm.collectionVariables.set('testEmail', body.email);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{testUserId}}\",\n  \"name\": \"{{testName}}\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"MEMBER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Registro público: genera un UUID y un correo únicos, crea un MEMBER y lo guarda en `testUserId` / `testEmail`. El backend lo deja en `PENDING`."
+          },
+          "response": []
+        },
+        {
+          "name": "2. Repetir creación idéntica (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK (creación idempotente)', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Devuelve el mismo usuario', () => {",
+                  "  pm.expect(body.id).to.eql(pm.collectionVariables.get('testUserId'));",
+                  "  pm.expect(body.email).to.eql(pm.collectionVariables.get('testEmail'));",
+                  "  pm.expect(body.status).to.eql('PENDING');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{testUserId}}\",\n  \"name\": \"{{testName}}\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"MEMBER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Reintento con el mismo `id`, nombre, correo, rol y contraseña: el backend responde 200 sin insertar otra fila."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Mismo id con datos distintos (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 Conflict', () => pm.response.to.have.status(409));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Explica el conflicto', () => {",
+                  "  pm.expect(body.status).to.eql(409);",
+                  "  pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{testUserId}}\",\n  \"name\": \"Nombre Diferente\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"MEMBER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "El mismo `id` y correo con otro nombre no es un reintento: el backend responde 409."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Listar usuarios (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const list = pm.response.json();",
+                  "pm.test('Devuelve un arreglo de usuarios', () => {",
+                  "  pm.expect(list).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "pm.test('El usuario de prueba está en la lista', () => {",
+                  "  const id = pm.collectionVariables.get('testUserId');",
+                  "  pm.expect(list.some((user) => user.id === id)).to.be.true;",
+                  "});",
+                  "pm.test('Ningún usuario expone la contraseña', () => {",
+                  "  list.forEach((user) => pm.expect(user).to.not.have.property('password'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "description": "Listado protegido. Usa el `accessToken` de la colección (ADMIN)."
+          },
+          "response": []
+        },
+        {
+          "name": "5. Consultar usuario por id (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Corresponde al usuario creado', () => {",
+                  "  pm.expect(body.id).to.eql(pm.collectionVariables.get('testUserId'));",
+                  "  pm.expect(body.email).to.eql(pm.collectionVariables.get('testEmail'));",
+                  "  pm.expect(body.status).to.eql('PENDING');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{testUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{testUserId}}"
+              ]
+            },
+            "description": "Consulta individual con el token de administrador."
+          },
+          "response": []
+        },
+        {
+          "name": "6. Login del usuario PENDING (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('El usuario pendiente no puede iniciar sesión', () => {",
+                  "  pm.expect(pm.response.json().status).to.eql(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "El registro público deja la cuenta en `PENDING`; el login exige `ACTIVE`."
+          },
+          "response": []
+        },
+        {
+          "name": "7. Activar usuario (PUT 200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('El usuario queda ACTIVE', () => {",
+                  "  pm.expect(body.status).to.eql('ACTIVE');",
+                  "  pm.expect(body.role).to.eql('MEMBER');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{testName}}\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"\",\n  \"role\": \"MEMBER\",\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{testUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{testUserId}}"
+              ]
+            },
+            "description": "Solo ADMIN puede actualizar. La contraseña vacía conserva la anterior; el paso 8 lo verifica iniciando sesión con la contraseña original."
+          },
+          "response": []
+        },
+        {
+          "name": "8. Login del usuario activado (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Devuelve un token de MEMBER', () => {",
+                  "  const payload = body.accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "  const padded = payload + '='.repeat((4 - payload.length % 4) % 4);",
+                  "  const claims = JSON.parse(atob(padded));",
+                  "  pm.expect(claims.role).to.eql('MEMBER');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('memberToken', body.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Tras la activación el login funciona y guarda `memberToken` para las pruebas de permisos."
+          },
+          "response": []
+        },
+        {
+          "name": "9. Listar como MEMBER (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{memberToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "description": "El listado solo permite ADMIN y REVIEWER; un MEMBER recibe 403."
+          },
+          "response": []
+        },
+        {
+          "name": "10. Actualizar como MEMBER (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{memberToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{testName}}\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"\",\n  \"role\": \"MEMBER\",\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{testUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{testUserId}}"
+              ]
+            },
+            "description": "Solo ADMIN puede editar; un MEMBER recibe 403 aunque el cuerpo sea válido."
+          },
+          "response": []
+        },
+        {
+          "name": "11. Email ya usado por otro (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 Conflict', () => pm.response.to.have.status(409));",
+                  "pm.test('El mensaje explica el conflicto', () => {",
+                  "  pm.expect(pm.response.json().status).to.eql(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{testName}}\",\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"\",\n  \"role\": \"MEMBER\",\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{testUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{testUserId}}"
+              ]
+            },
+            "description": "Intenta asignar el correo del administrador al usuario de prueba: 409 sin modificar datos."
+          },
+          "response": []
+        },
+        {
+          "name": "12. Eliminar usuario (204)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{testUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{testUserId}}"
+              ]
+            },
+            "description": "Solo ADMIN. Elimina el usuario de prueba creado por la colección."
+          },
+          "response": []
+        },
+        {
+          "name": "13. Usuario eliminado (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
+                  "pm.test('El cuerpo describe el error', () => {",
+                  "  pm.expect(pm.response.json().status).to.eql(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{testUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{testUserId}}"
+              ]
+            },
+            "description": "Comprueba que el usuario ya no existe."
+          },
+          "response": []
+        },
+        {
+          "name": "14. Limpieza tolerante (204 o 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 o 404', () => pm.expect([204, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{testUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{testUserId}}"
+              ]
+            },
+            "description": "Red de seguridad: si un paso anterior falló, intenta borrar el usuario de prueba. Pasa con 204 (borrado) o 404 (ya no existe)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "04 · Errores",
+      "description": "Casos de validación y recursos inexistentes que no dependen del flujo CRUD.",
+      "item": [
+        {
+          "name": "Crear usuario inválido (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Detalla los campos inválidos', () => {",
+                  "  pm.expect(body.status).to.eql(400);",
+                  "  pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"\",\n  \"name\": \"ab\",\n  \"email\": \"correo-invalido\",\n  \"password\": \"123\",\n  \"role\": \"MEMBER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Id vacío, nombre corto, email mal formado y contraseña corta: Bean Validation responde 400."
+          },
+          "response": []
+        },
+        {
+          "name": "Crear con rol inexistente (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{$guid}}\",\n  \"name\": \"Usuario Rol Invalido\",\n  \"email\": \"{{$guid}}@example.com\",\n  \"password\": \"Password123!\",\n  \"role\": \"SUPERADMIN\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "El rol debe ser ADMIN, MEMBER o REVIEWER. Un valor fuera del enum se rechaza con 400 y no crea el usuario."
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar id inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Devuelve el error del API', () => {",
+                  "  pm.expect(body.status).to.eql(404);",
+                  "  pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/00000000-0000-0000-0000-0000000000ff",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "00000000-0000-0000-0000-0000000000ff"
+              ]
+            },
+            "description": "Consulta un id que no existe con el token de administrador."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
